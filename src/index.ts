@@ -18,6 +18,12 @@ const eventCache = new EventCache(MEETUP_ORG_URL);
 // Middleware
 app.use(express.json());
 
+// Add cache headers for all responses (1 minute cache for Cloudflare)
+app.use((_req: Request, res: Response, next) => {
+  res.set('Cache-Control', 'public, max-age=60, s-maxage=60');
+  next();
+});
+
 // Root endpoint - API documentation
 app.get('/', (_req: Request, res: Response) => {
   res.json({

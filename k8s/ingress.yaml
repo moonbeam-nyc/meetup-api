@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: meetup-api
+  namespace: meetup-api
+  labels:
+    app: meetup-api
+  annotations:
+    # Automatically redirect HTTP to HTTPS
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # Use cert-manager to automatically provision TLS certificates
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+spec:
+  ingressClassName: nginx
+  tls:
+  - hosts:
+    - meetup-api.astoria.app
+    secretName: meetup-api-tls
+  rules:
+  - host: meetup-api.astoria.app
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: meetup-api
+            port:
+              name: http

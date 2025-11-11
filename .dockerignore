@@ -1,0 +1,41 @@
+# Node
+node_modules/
+npm-debug.log
+yarn-error.log
+
+# Environment
+.env
+.env.local
+.envrc
+
+# Build artifacts
+dist/
+coverage/
+
+# Git
+.git/
+.gitignore
+
+# Documentation
+*.md
+!package.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Kubernetes
+k8s/
+
+# Docker
+Dockerfile
+docker-compose*.yml
+
+# CI/CD
+.github/

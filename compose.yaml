@@ -1,12 +1,18 @@
+# Docker Compose configuration for local development
+# This is the primary configuration - edit MEETUP_ORG_URL for your meetup group
 services:
   meetup-api:
     build: .
     ports:
       - "3000:3000"
     environment:
+      # Required: Set to your Meetup.com organization URL
       - MEETUP_ORG_URL=https://www.meetup.com/astoria-tech-meetup/
+      # Optional: Server port (default: 3000)
       - PORT=3000
+      # Optional: Cache refresh interval in hours (default: 1)
       - REFRESH_INTERVAL_HOURS=1
+    # Volume mounts for hot-reload development
     volumes:
       - ./src:/app/src
       - ./package.json:/app/package.json
