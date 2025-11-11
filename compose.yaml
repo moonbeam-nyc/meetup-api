@@ -1,0 +1,14 @@
+services:
+  meetup-api:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - MEETUP_ORG_URL=https://www.meetup.com/astoria-tech-meetup/
+      - PORT=3000
+      - REFRESH_INTERVAL_HOURS=1
+    volumes:
+      - ./src:/app/src
+      - ./package.json:/app/package.json
+      - ./tsconfig.json:/app/tsconfig.json
+    restart: unless-stopped
