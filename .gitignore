@@ -1,8 +1,31 @@
-node_modules/
-dist/
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+meetup-api
+vendor/
+
+# Go test files
+*.test
+*.out
+coverage/
+
+# Environment
 .env
 .env.local
 .envrc
+
+# Logs
 *.log
+
+# OS
 .DS_Store
-coverage/
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

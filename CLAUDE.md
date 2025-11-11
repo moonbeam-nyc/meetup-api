@@ -1,17 +1,18 @@
 # Meetup API Server - Project Knowledge Base
 
 ## Overview
-This is a Node.js/TypeScript API server that scrapes Meetup.com organization pages and provides both JSON API endpoints and RSS feeds for upcoming and past events. It's designed to run in a Kubernetes cluster and be deployed to the moonbeam-nyc organization.
+This is a lightweight Go API server that scrapes Meetup.com organization pages and provides both JSON API endpoints and RSS feeds for upcoming and past events. It's designed to run in a Kubernetes cluster and be deployed to the moonbeam-nyc organization.
 
 ## Tech Stack
-- **Runtime**: Node.js 20 (Alpine Linux)
-- **Language**: TypeScript 5.3
-- **Framework**: Express.js 4.18
-- **Scraping**: Axios + Cheerio
-- **Scheduling**: node-cron
-- **RSS Generation**: rss package
-- **Build**: TypeScript Compiler (tsc)
-- **Container**: Docker (multi-stage build)
+- **Runtime**: Go 1.21
+- **Language**: Go (Golang)
+- **HTTP Server**: Go standard library (net/http)
+- **Scraping**: goquery (jQuery-like HTML parsing)
+- **Scheduling**: robfig/cron
+- **RSS Generation**: gorilla/feeds
+- **Build**: Go compiler with static linking
+- **Container**: Docker (multi-stage build with scratch base)
+- **Image Size**: 6MB (26x smaller than Node.js version)
 - **Orchestration**: Kubernetes
 - **Registry**: GitHub Container Registry (ghcr.io/moonbeam-nyc)
 
@@ -19,47 +20,49 @@ This is a Node.js/TypeScript API server that scrapes Meetup.com organization pag
 
 ```
 .
-├── src/
-│   ├── index.ts          # Main Express server and routes
-│   ├── scraper.ts        # Meetup.com web scraper (extracts from __NEXT_DATA__)
-│   ├── cache.ts          # Event caching mechanism
-│   ├── rss.ts            # RSS feed generator
-│   └── types.ts          # TypeScript type definitions
+├── cmd/
+│   └── server/
+│       ├── main.go       # HTTP server, routes, and cache management
+│       ├── scraper.go    # Meetup.com web scraper (extracts from __NEXT_DATA__)
+│       ├── rss.go        # RSS feed generator
+│       └── types.go      # Go type definitions
 ├── k8s/                  # Kubernetes manifests
 │   ├── namespace.yaml    # meetup-api namespace
 │   ├── deployment.yaml   # Deployment + ConfigMap
 │   ├── service.yaml      # ClusterIP service
-│   └── ingress.yaml      # Ingress configuration
-├── Dockerfile            # Multi-stage Docker build
+│   ├── ingress.yaml      # Ingress configuration
+│   └── custom-headers.yaml # Custom HTTP headers ConfigMap
+├── Dockerfile            # Multi-stage Docker build (scratch-based)
 ├── Makefile              # Build, deploy, and management targets
-├── package.json          # Dependencies and scripts
-└── tsconfig.json         # TypeScript configuration
+├── go.mod                # Go module dependencies
+└── go.sum                # Go module checksums
 ```
 
 ## Core Functionality
 
-### Web Scraping (src/scraper.ts)
+### Web Scraping (cmd/server/scraper.go)
 - Scrapes Meetup.com organization pages by fetching the HTML and extracting the `__NEXT_DATA__` JSON embedded in the page
-- Parses the Apollo GraphQL state from the Next.js data
+- Parses the Apollo GraphQL state from the Next.js data using goquery
 - Extracts both ACTIVE (upcoming) and PAST events
 - Parses event details: title, description, date/time, location, attendee count, event URL
 - Strips HTML from descriptions for clean text output
 
-### Caching (src/cache.ts)
-- Maintains in-memory cache of upcoming and past events
+### Caching (cmd/server/main.go)
+- Maintains in-memory cache of upcoming and past events with RWMutex for thread safety
 - Automatically refreshes based on configurable interval (default: hourly)
-- Provides getUpcoming(), getPast(), and getLastUpdated() methods
+- Goroutines and channels for concurrent operations
 
-### API Endpoints (src/index.ts)
+### API Endpoints (cmd/server/main.go)
 - `GET /` - API documentation
 - `GET /health` - Health check with last updated timestamp
 - `GET /api/upcoming` - JSON array of upcoming events
 - `GET /api/past` - JSON array of past events
 - `GET /feed/upcoming` - RSS feed of upcoming events
 - `GET /feed/past` - RSS feed of past events
+- All responses include `Cache-Control` headers for CDN caching
 
-### RSS Generation (src/rss.ts)
-- Converts event data to RSS 2.0 format
+### RSS Generation (cmd/server/rss.go)
+- Converts event data to RSS 2.0 format using gorilla/feeds
 - Includes event title, description, date, location, and link
 
 ## Environment Variables
@@ -75,14 +78,15 @@ This is a Node.js/TypeScript API server that scrapes Meetup.com organization pag
 
 ### Docker Build
 The Dockerfile uses a multi-stage build:
-1. **Builder stage**: Installs all dependencies and builds TypeScript
-2. **Production stage**: Only includes production dependencies and compiled JS
+1. **Builder stage**: Uses golang:1.21-alpine to compile Go code
+2. **Production stage**: Uses scratch (empty base image) with only the binary
 
 Features:
-- Non-root user (nodejs:1001)
-- Minimal attack surface
-- Health check integration
-- Optimized for size and security
+- Single static binary (no dependencies)
+- Non-root user (nobody:65534)
+- Final image size: **6MB** (vs 159MB Node.js version)
+- No shell or package manager (maximum security)
+- CA certificates included for HTTPS
 
 ### Makefile Targets
 
@@ -104,10 +108,9 @@ Features:
 - `make dev-build` - Build and run dev server in Docker
 - `make dev-logs` - View Docker Compose logs
 - `make dev-down` - Stop Docker Compose services
-- `make install` - Install npm dependencies (local)
-- `make lint` - Run ESLint (local)
-- `make format` - Run Prettier (local)
-- `make test` - Run unit tests (npm test)
+- `make go-run` - Run Go server locally (requires Go)
+- `make go-build` - Build Go binary locally
+- `make go-fmt` - Format Go code
 - `make test-server` - Integration test in Docker (starts compose, validates endpoints, cleans up)
 
 ### Kubernetes Architecture
@@ -148,12 +151,12 @@ Features:
 5. Stop server: `make dev-down`
 
 ### Local Development without Docker (Optional)
-1. Install dependencies: `npm install`
+1. Install Go 1.21+ from https://golang.org/dl/
 2. Set `MEETUP_ORG_URL` environment variable: `export MEETUP_ORG_URL="https://www.meetup.com/your-org"`
-3. Build TypeScript: `npm run build`
-4. Run server: `npm start`
+3. Run server: `make go-run`
+4. Or build binary: `make go-build && ./meetup-api`
 
-Note: Docker development is the primary workflow. Local development is supported but not the recommended approach.
+Note: Docker development is the primary workflow. Local Go development is supported but not required.
 
 ### Testing
 The project includes an integration test script (`test-server.sh`) that runs entirely in Docker:

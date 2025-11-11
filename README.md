@@ -1,6 +1,6 @@
 # Meetup API Server
 
-A TypeScript Node.js server that scrapes Meetup.com events and serves them via REST API and RSS feeds.
+A lightweight Go server that scrapes Meetup.com events and serves them via REST API and RSS feeds.
 
 ## Features
 
@@ -9,7 +9,8 @@ A TypeScript Node.js server that scrapes Meetup.com events and serves them via R
 - Generates RSS feeds for both upcoming and past events
 - Automatic hourly refresh (configurable)
 - Docker containerized with Docker Compose
-- TypeScript for type safety
+- Tiny Docker image: **6MB** (26x smaller than Node.js version)
+- Fast startup and low memory footprint
 
 ## Quick Start
 
@@ -45,10 +46,10 @@ make k8s-status       # Check deployment status
 make k8s-logs         # Follow logs
 make k8s-restart      # Rolling restart
 
-# Local development (without Docker)
-make install          # Install npm dependencies
-make lint             # Run ESLint
-make format           # Run Prettier
+# Local Go development (optional - requires Go installed)
+make go-run           # Run server locally with Go
+make go-build         # Build Go binary
+make go-fmt           # Format Go code
 
 # Help
 make help             # Show all available targets
@@ -148,21 +149,18 @@ To change the Meetup URL, edit the `MEETUP_ORG_URL` in `compose.yaml`.
 
 ### Local Development (without Docker)
 
-For local development without Docker:
+For local development without Docker (requires Go 1.21+):
 
 ```bash
-# Install dependencies
-npm install
-
 # Set MEETUP_ORG_URL environment variable
 export MEETUP_ORG_URL="https://www.meetup.com/your-org-name"
 
-# Run in development mode with hot reload
-npm run dev
+# Run directly
+make go-run
 
-# Or build and run production
-npm run build
-npm start
+# Or build and run binary
+make go-build
+./meetup-api
 ```
 
 ### Testing
@@ -182,16 +180,13 @@ The test script:
 5. Validates HTTP 200 responses and content types
 6. Stops Docker Compose and cleans up
 
-**Requirements:** Docker and curl (no node/npm/jq needed on host)
+**Requirements:** Docker and curl
 
 ### Code Quality
 
 ```bash
-# Lint code
-npm run lint
-
-# Format code
-npm run format
+# Format Go code
+make go-fmt
 ```
 
 ## How It Works
@@ -205,11 +200,12 @@ npm run format
 
 ## Architecture
 
-- `src/index.ts`: Express server and route handlers
-- `src/scraper.ts`: Meetup.com scraping logic
-- `src/cache.ts`: Event caching mechanism
-- `src/rss.ts`: RSS feed generation
-- `src/types.ts`: TypeScript type definitions
+- `cmd/server/main.go`: HTTP server, route handlers, and caching logic
+- `cmd/server/scraper.go`: Meetup.com scraping with goquery
+- `cmd/server/rss.go`: RSS feed generation
+- `cmd/server/types.go`: Go type definitions
+- `Dockerfile`: Multi-stage build producing 6MB image
+- `k8s/`: Kubernetes manifests for deployment
 
 ## Kubernetes Deployment
 

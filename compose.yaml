@@ -12,9 +12,4 @@ services:
       - PORT=3000
       # Optional: Cache refresh interval in hours (default: 1)
       - REFRESH_INTERVAL_HOURS=1
-    # Volume mounts for hot-reload development
-    volumes:
-      - ./src:/app/src
-      - ./package.json:/app/package.json
-      - ./tsconfig.json:/app/tsconfig.json
     restart: unless-stopped

@@ -42,22 +42,30 @@ spec:
               name: meetup-api-config
               key: refresh-interval-hours
               optional: true
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          failureThreshold: 10
         livenessProbe:
           httpGet:
             path: /health
             port: http
-          initialDelaySeconds: 10
-          periodSeconds: 30
-          timeoutSeconds: 5
+          initialDelaySeconds: 0
+          periodSeconds: 10
+          timeoutSeconds: 2
           failureThreshold: 3
         readinessProbe:
           httpGet:
             path: /health
             port: http
-          initialDelaySeconds: 5
-          periodSeconds: 10
-          timeoutSeconds: 3
-          failureThreshold: 3
+          initialDelaySeconds: 0
+          periodSeconds: 5
+          timeoutSeconds: 2
+          failureThreshold: 2
         resources:
           requests:
             cpu: "10m"

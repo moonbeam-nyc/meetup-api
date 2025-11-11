@@ -1,16 +1,20 @@
-# Node
-node_modules/
-npm-debug.log
-yarn-error.log
+# Go build artifacts
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+meetup-api
+vendor/
+
+# Go test files
+*.test
+*.out
 
 # Environment
 .env
 .env.local
 .envrc
-
-# Build artifacts
-dist/
-coverage/
 
 # Git
 .git/
@@ -18,7 +22,6 @@ coverage/
 
 # Documentation
 *.md
-!package.json
 
 # IDE
 .vscode/
@@ -35,7 +38,10 @@ k8s/
 
 # Docker
 Dockerfile
-docker-compose*.yml
+compose.yaml
 
 # CI/CD
 .github/
+
+# Testing
+test-server.sh

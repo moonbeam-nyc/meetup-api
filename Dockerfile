@@ -1,52 +1,34 @@
 # Build stage
-FROM node:20-alpine AS builder
+FROM golang:1.21-alpine AS builder
 
 WORKDIR /app
 
-# Copy package files
-COPY package*.json ./
+# Copy go mod files
+COPY go.mod go.sum* ./
 
-# Install dependencies
-RUN npm ci
+# Download dependencies
+RUN go mod download
 
 # Copy source code
-COPY tsconfig.json ./
-COPY src ./src
+COPY cmd/ ./cmd/
 
-# Build TypeScript
-RUN npm run build
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" -o /app/meetup-api ./cmd/server
 
-# Production stage
-FROM node:20-alpine
+# Production stage - use scratch for minimal size
+FROM scratch
 
-WORKDIR /app
+# Copy CA certificates for HTTPS
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
-# Copy package files
-COPY package*.json ./
-
-# Install production dependencies only
-RUN npm ci --omit=dev && \
-    npm cache clean --force
-
-# Copy built application from builder
-COPY --from=builder /app/dist ./dist
-
-# Create non-root user
-RUN addgroup -g 1001 -S nodejs && \
-    adduser -S nodejs -u 1001
-
-# Set ownership
-RUN chown -R nodejs:nodejs /app
-
-# Switch to non-root user
-USER nodejs
+# Copy the binary
+COPY --from=builder /app/meetup-api /meetup-api
 
 # Expose port
 EXPOSE 3000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD node -e "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"
+# Run as non-root (nobody user)
+USER 65534:65534
 
 # Start application
-CMD ["node", "dist/index.js"]
+ENTRYPOINT ["/meetup-api"]

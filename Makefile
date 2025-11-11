@@ -1,9 +1,9 @@
-.PHONY: help build tag push docker-all docker-public k8s-apply k8s-delete k8s-restart k8s-logs k8s-status install dev dev-build dev-logs dev-down test test-server format lint
+.PHONY: help build tag push docker-release docker-public k8s-apply k8s-delete k8s-restart k8s-logs k8s-status dev dev-build dev-logs dev-down test-server go-run go-build go-fmt
 
 # Container image configuration
 REGISTRY := ghcr.io/moonbeam-nyc
 IMAGE_NAME := meetup-api
-VERSION ?= $(shell cat package.json | grep '"version"' | cut -d'"' -f4)
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 IMAGE := $(REGISTRY)/$(IMAGE_NAME)
 
 # Kubernetes namespace
@@ -34,12 +34,11 @@ docker-public: ## Instructions to make the image public (API doesn't work for or
 	@echo ""
 	@echo "Note: GitHub's API doesn't support changing org package visibility"
 
-docker-all: build push ## Build and push Docker image
+docker-release: build push ## Build and push Docker image with latest tag
 
 # Kubernetes targets
 k8s-apply: ## Apply all Kubernetes manifests
 	kubectl apply -f k8s/namespace.yaml
-	kubectl apply -f k8s/custom-headers.yaml
 	kubectl apply -f k8s/deployment.yaml
 	kubectl apply -f k8s/service.yaml
 	kubectl apply -f k8s/ingress.yaml
@@ -61,9 +60,6 @@ k8s-status: ## Check deployment status
 	kubectl get all -n $(NAMESPACE)
 
 # Development targets
-install: ## Install npm dependencies
-	npm install
-
 dev: ## Run development server in Docker
 	docker compose up
 
@@ -76,14 +72,15 @@ dev-logs: ## View docker compose logs
 dev-down: ## Stop docker compose services
 	docker compose down
 
-test: ## Run unit tests (npm test)
-	npm test
-
 test-server: ## Test server endpoints in Docker
 	@./test-server.sh
 
-format: ## Format code
-	npm run format
+# Go development targets (if you have Go installed locally)
+go-run: ## Run Go server locally
+	cd cmd/server && go run .
 
-lint: ## Lint code
-	npm run lint
+go-build: ## Build Go binary locally
+	go build -o meetup-api ./cmd/server
+
+go-fmt: ## Format Go code
+	go fmt ./...
