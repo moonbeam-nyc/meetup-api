@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="static/images/meetup-api.png" alt="Meetup API" width="256">
+</p>
+
 # Meetup API Server
 
 A lightweight Go server that scrapes Meetup.com events and serves them via REST API and RSS feeds.
@@ -12,50 +16,140 @@ A lightweight Go server that scrapes Meetup.com events and serves them via REST 
 - Tiny Docker image: **6MB** (26x smaller than Node.js version)
 - Fast startup and low memory footprint
 
-## Quick Start
-
-1. Edit `compose.yaml` and set your `MEETUP_ORG_URL`
-2. Run `make dev` to start the server
-3. Visit http://localhost:3000
-
-### Prerequisites
+## Prerequisites
 
 - Docker and Docker Compose
 - Make (optional, for easier workflow)
 
-### Using Make (Recommended)
+## Quick Start
+
+1. Edit `compose.yaml` and set your `MEETUP_ORG_URL`
+2. Run `docker compose up` to start the server
+3. Visit http://localhost:3000
+
+Or using Make:
+```bash
+make dev
+```
+
+## API Endpoints
+
+### Health Check
+```
+GET /health
+```
+
+Returns server status and last cache update time.
+
+**Example Response:**
+```json
+{
+  "status": "ok",                           // Server health status
+  "lastUpdated": "2025-11-13T10:30:00Z"    // Last time events were refreshed
+}
+```
+
+### Upcoming Events
+```
+GET /api/upcoming
+```
+
+Returns JSON array of upcoming events.
+
+**Example Response:**
+```json
+[
+  {
+    "id": "abc123def",                      // Unique event identifier
+    "title": "Monthly Tech Meetup",         // Event title
+    "description": "Join us for an evening of tech talks and networking...",  // Event description (HTML stripped)
+    "dateTime": "2025-11-20T18:00:00Z",    // Event start date/time (ISO 8601)
+    "endTime": "2025-11-20T21:00:00Z",     // Event end date/time (optional)
+    "location": {
+      "name": "Tech Hub Downtown",          // Venue name
+      "address": "123 Main St",             // Street address
+      "city": "San Francisco",              // City
+      "state": "CA"                         // State/province
+    },
+    "eventUrl": "https://www.meetup.com/your-group/events/abc123def/",  // Direct link to event
+    "going": 42,                            // Number of RSVPs
+    "status": "ACTIVE"                      // Event status (ACTIVE or PAST)
+  }
+]
+```
+
+### Past Events
+```
+GET /api/past
+```
+
+Returns JSON array of past events with the same structure as upcoming events.
+
+**Example Response:**
+```json
+[
+  {
+    "id": "xyz789ghi",
+    "title": "October Networking Event",
+    "description": "Great evening of networking and collaboration...",
+    "dateTime": "2025-10-15T18:00:00Z",
+    "endTime": "2025-10-15T21:00:00Z",
+    "location": {
+      "name": "Innovation Center",
+      "address": "456 Tech Blvd",
+      "city": "San Francisco",
+      "state": "CA"
+    },
+    "eventUrl": "https://www.meetup.com/your-group/events/xyz789ghi/",
+    "going": 38,
+    "status": "PAST"
+  }
+]
+```
+
+### RSS Feeds
+```
+GET /feed/upcoming
+GET /feed/past
+```
+
+Returns RSS 2.0 feeds for upcoming and past events. Compatible with all standard RSS readers.
+
+## Documentation
+
+### Make Commands
+
+The project includes a Makefile for common operations:
 
 ```bash
-# Local development (runs in Docker)
+# Development
 make dev              # Start server in Docker Compose
 make dev-build        # Build and start server
 make dev-logs         # View Docker logs
 make dev-down         # Stop Docker services
 
-# Testing (runs in Docker)
+# Testing
 make test-server      # Run integration tests in Docker
 
-# Production Docker operations
+# Production Docker
 make build            # Build production Docker image
 make push             # Push to GitHub Container Registry
 make docker-all       # Build and push
 
-# Kubernetes operations
+# Kubernetes
 make k8s-apply        # Deploy to Kubernetes cluster
 make k8s-status       # Check deployment status
 make k8s-logs         # Follow logs
 make k8s-restart      # Rolling restart
 
-# Local Go development (optional - requires Go installed)
-make go-run           # Run server locally with Go
-make go-build         # Build Go binary
+# Utilities
 make go-fmt           # Format Go code
-
-# Help
 make help             # Show all available targets
 ```
 
-### Manual Docker Compose
+### Docker Compose Commands
+
+Manual Docker Compose usage:
 
 ```bash
 # Build and run
@@ -65,49 +159,13 @@ docker compose up -d
 # View logs
 docker compose logs -f
 
-# Stop
+# Stop and remove containers
 docker compose down
-```
 
-## API Endpoints
-
-### Health Check
+# Rebuild from scratch
+docker compose build --no-cache
+docker compose up -d
 ```
-GET /health
-```
-Returns server status and last cache update time.
-
-### Upcoming Events
-```
-GET /api/upcoming
-```
-Returns JSON array of upcoming events with details.
-
-### Past Events
-```
-GET /api/past
-```
-Returns JSON array of past events with details.
-
-### RSS Feeds
-```
-GET /feed/upcoming
-GET /feed/past
-```
-Returns RSS feeds for upcoming and past events.
-
-## Event Data Structure
-
-Each event includes:
-- `id`: Unique event identifier
-- `title`: Event title
-- `description`: Event description (HTML stripped)
-- `dateTime`: Event start date/time (ISO 8601)
-- `endTime`: Event end date/time (optional)
-- `location`: Venue information (name, address, city, state)
-- `eventUrl`: Direct link to event page
-- `going`: Number of RSVPs
-- `status`: "ACTIVE" or "PAST"
 
 ## Configuration
 
@@ -127,7 +185,7 @@ environment:
 
 ## Development
 
-### Docker Development (Recommended)
+### Docker Development
 
 All development is designed to run in Docker. Configuration is in `compose.yaml`.
 
@@ -146,22 +204,6 @@ make dev-build
 ```
 
 To change the Meetup URL, edit the `MEETUP_ORG_URL` in `compose.yaml`.
-
-### Local Development (without Docker)
-
-For local development without Docker (requires Go 1.21+):
-
-```bash
-# Set MEETUP_ORG_URL environment variable
-export MEETUP_ORG_URL="https://www.meetup.com/your-org-name"
-
-# Run directly
-make go-run
-
-# Or build and run binary
-make go-build
-./meetup-api
-```
 
 ### Testing
 
