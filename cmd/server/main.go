@@ -92,6 +92,16 @@ func refreshCache() error {
 		return err
 	}
 
+	// Don't replace populated cache with empty results (likely a transient scraping failure)
+	cacheMutex.RLock()
+	hadData := len(cache.Upcoming) > 0 || len(cache.Past) > 0
+	cacheMutex.RUnlock()
+
+	if hadData && len(upcoming) == 0 && len(past) == 0 {
+		log.Printf("WARNING: Scrape returned 0 events but cache has data, keeping stale cache")
+		return fmt.Errorf("scrape returned empty results, keeping existing cache")
+	}
+
 	cacheMutex.Lock()
 	cache.Upcoming = upcoming
 	cache.Past = past

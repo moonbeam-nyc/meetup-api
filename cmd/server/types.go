@@ -12,6 +12,7 @@ type MeetupEvent struct {
 	EventURL    string    `json:"eventUrl"`
 	Going       int       `json:"going"`
 	Status      string    `json:"status"`
+	PhotoURL    string    `json:"photoUrl,omitempty"`
 }
 
 type Location struct {

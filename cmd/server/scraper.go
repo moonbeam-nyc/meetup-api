@@ -71,6 +71,9 @@ func (s *MeetupScraper) fetchAllPastEvents() ([]MeetupEvent, error) {
 		events, nextCursor, hasMore, err := s.fetchPastEventsGraphQL(urlname, cursor)
 		if err != nil {
 			log.Printf("Error fetching page %d: %v\n", pageNum, err)
+			if len(allEvents) == 0 {
+				return nil, fmt.Errorf("failed on first page of past events: %w", err)
+			}
 			break
 		}
 
@@ -159,6 +162,9 @@ type GraphQLResponse struct {
 							City    string `json:"city"`
 							State   string `json:"state"`
 						} `json:"venue"`
+						FeaturedEventPhoto *struct {
+							HighResUrl string `json:"highResUrl"`
+						} `json:"featuredEventPhoto"`
 					} `json:"node"`
 				} `json:"edges"`
 			} `json:"events"`
@@ -247,6 +253,10 @@ func (s *MeetupScraper) fetchPastEventsGraphQL(urlname string, cursor string) ([
 				City:    node.Venue.City,
 				State:   node.Venue.State,
 			}
+		}
+
+		if node.FeaturedEventPhoto != nil {
+			event.PhotoURL = node.FeaturedEventPhoto.HighResUrl
 		}
 
 		events = append(events, event)
