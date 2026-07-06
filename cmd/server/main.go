@@ -48,9 +48,23 @@ func main() {
 		LastUpdated: time.Now(),
 	}
 
-	// Initial cache load
-	if err := refreshCache(); err != nil {
-		log.Fatalf("Failed to load initial cache: %v", err)
+	// Initial cache load — retry so a transient scrape failure (e.g. Meetup's
+	// persisted-query cache being cold) doesn't leave us serving an empty list.
+	// After a bounded number of tries we start anyway (the port must open and the
+	// periodic refresh keeps trying), but we try hard to have real data first.
+	const maxInitialAttempts = 5
+	for attempt := 1; attempt <= maxInitialAttempts; attempt++ {
+		err := refreshCache()
+		if err == nil {
+			break
+		}
+		if attempt == maxInitialAttempts {
+			log.Printf("WARNING: initial cache still degraded after %d attempts: %v — starting anyway, periodic refresh will keep retrying", attempt, err)
+			break
+		}
+		wait := time.Duration(attempt*3) * time.Second
+		log.Printf("Initial cache load attempt %d degraded (%v); retrying in %s...", attempt, err, wait)
+		time.Sleep(wait)
 	}
 
 	// Setup cron for periodic refresh
@@ -92,22 +106,42 @@ func refreshCache() error {
 		return err
 	}
 
-	// Don't replace populated cache with empty results (likely a transient scraping failure)
-	cacheMutex.RLock()
-	hadData := len(cache.Upcoming) > 0 || len(cache.Past) > 0
-	cacheMutex.RUnlock()
+	cacheMutex.Lock()
+	defer cacheMutex.Unlock()
 
-	if hadData && len(upcoming) == 0 && len(past) == 0 {
-		log.Printf("WARNING: Scrape returned 0 events but cache has data, keeping stale cache")
-		return fmt.Errorf("scrape returned empty results, keeping existing cache")
+	// Defensive: never overwrite good data with an empty list. A dimension that
+	// comes back empty is treated as a transient scrape failure for that dimension
+	// (not "there are no events") — we keep whatever we already had.
+	changed := false
+	if len(upcoming) > 0 || len(cache.Upcoming) == 0 {
+		cache.Upcoming = upcoming
+		changed = true
+	} else {
+		log.Printf("WARNING: scrape returned 0 upcoming events; keeping %d cached", len(cache.Upcoming))
+	}
+	// Past events only ever accumulate, and we have two sources of differing
+	// completeness (full GraphQL history vs. the ~10-item HTML fallback). So only
+	// accept a past list at least as complete as what we already have: this keeps a
+	// cold-cache fallback from clobbering a good full history, yet still upgrades an
+	// earlier fallback once GraphQL recovers. (Also covers the empty case: 0 is only
+	// accepted when the cache is itself empty.)
+	if len(past) >= len(cache.Past) {
+		cache.Past = past
+		changed = true
+	} else {
+		log.Printf("WARNING: scrape returned %d past events but cache has %d; keeping cached (likely a degraded/fallback fetch)", len(past), len(cache.Past))
+	}
+	if changed {
+		cache.LastUpdated = time.Now()
 	}
 
-	cacheMutex.Lock()
-	cache.Upcoming = upcoming
-	cache.Past = past
-	cache.LastUpdated = time.Now()
-	cacheMutex.Unlock()
-
+	// Signal a degraded result so the initial-load retry loop can react. Upcoming
+	// can legitimately be zero (nothing scheduled), but this established group
+	// always has past events, so an empty past cache means the scrape isn't usable
+	// yet (e.g. GraphQL cold-cache AND the HTML fallback came back empty).
+	if len(cache.Past) == 0 {
+		return fmt.Errorf("no past events available (scrape degraded)")
+	}
 	return nil
 }
 

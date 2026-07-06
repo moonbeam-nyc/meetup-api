@@ -45,7 +45,31 @@ func (s *MeetupScraper) ScrapeEvents() ([]MeetupEvent, []MeetupEvent, error) {
 	return upcoming, past, nil
 }
 
+// fetchAllPastEvents returns past events, preferring the full GraphQL history but
+// falling back to the HTML page so a cold Meetup persisted-query cache degrades to
+// "the recent events" instead of zero.
 func (s *MeetupScraper) fetchAllPastEvents() ([]MeetupEvent, error) {
+	events, err := s.fetchAllPastEventsGraphQL()
+	if err == nil && len(events) > 0 {
+		return events, nil
+	}
+
+	// GraphQL failed (commonly PersistedQueryNotFound) or returned nothing. Scrape
+	// the past-events HTML page, whose __NEXT_DATA__ embeds the most recent events
+	// directly and does NOT depend on the persisted query. Fewer events, never zero.
+	log.Printf("GraphQL past-events fetch unusable (err=%v, got=%d) — falling back to HTML scrape\n", err, len(events))
+	htmlEvents, herr := s.fetchPage(s.meetupURL+"/events/?type=past", "PAST")
+	if herr != nil {
+		if err != nil {
+			return nil, fmt.Errorf("past events unavailable: graphql (%v) and html fallback (%v) both failed", err, herr)
+		}
+		return nil, fmt.Errorf("past events html fallback failed: %w", herr)
+	}
+	log.Printf("HTML fallback returned %d past events\n", len(htmlEvents))
+	return htmlEvents, nil
+}
+
+func (s *MeetupScraper) fetchAllPastEventsGraphQL() ([]MeetupEvent, error) {
 	allEvents := []MeetupEvent{}
 	cutoffYear := 2019
 
@@ -136,6 +160,14 @@ type GraphQLRequest struct {
 }
 
 type GraphQLResponse struct {
+	// Meetup's GraphQL uses Automatic Persisted Queries: we send only the query's
+	// sha256 hash. When Meetup's edge cache doesn't have that hash registered it
+	// replies HTTP 200 with a non-empty `errors` array (typically
+	// "PersistedQueryNotFound") and null data. We must surface that as an error —
+	// otherwise the empty `edges` below look like a legitimate "no past events".
+	Errors []struct {
+		Message string `json:"message"`
+	} `json:"errors"`
 	Data struct {
 		GroupByUrlname struct {
 			Events struct {
@@ -223,6 +255,17 @@ func (s *MeetupScraper) fetchPastEventsGraphQL(urlname string, cursor string) ([
 	var gqlResp GraphQLResponse
 	if err := json.NewDecoder(resp.Body).Decode(&gqlResp); err != nil {
 		return nil, "", false, fmt.Errorf("failed to decode response: %w", err)
+	}
+
+	// A 200 can still carry GraphQL-level errors (e.g. PersistedQueryNotFound when
+	// the query hash is cold in Meetup's cache). Treat that as a hard error so the
+	// empty edge list isn't mistaken for a real "no more events" result.
+	if len(gqlResp.Errors) > 0 {
+		msgs := make([]string, 0, len(gqlResp.Errors))
+		for _, e := range gqlResp.Errors {
+			msgs = append(msgs, e.Message)
+		}
+		return nil, "", false, fmt.Errorf("graphql error: %s", strings.Join(msgs, "; "))
 	}
 
 	// Extract events

@@ -1,7 +1,32 @@
 # Meetup API Server - Project Knowledge Base
 
 ## Overview
-This is a lightweight Go API server that scrapes Meetup.com organization pages and provides both JSON API endpoints and RSS feeds for upcoming and past events. It's designed to run in a Kubernetes cluster and be deployed to the moonbeam-nyc organization.
+This is a lightweight Go API server that scrapes Meetup.com organization pages and provides both JSON API endpoints and RSS feeds for upcoming and past events.
+
+## Deployment (live)
+**Primary/live deployment is the Pi** (fleet at `~/projects/personal`), NOT
+Kubernetes. It runs as a native systemd service — the old Cloudflare tunnel to a
+Hetzner VPS was retired in favour of hosting on the Pi.
+
+- **Public URL:** `https://meetup-api.astoria.app`, fronted by the `http-routing`
+  Caddy + cloudflared tunnel (orange-cloud CNAME → the Pi's tunnel). Caddy
+  reverse-proxies the host → `127.0.0.1:3000`.
+- **Service:** `systemd/meetup-api.service` runs the Go binary directly (no
+  Docker). Build + install (one-time, sudo):
+  ```bash
+  go build -ldflags="-w -s" -o meetup-api ./cmd/server
+  sudo cp systemd/meetup-api.service /etc/systemd/system/
+  sudo systemctl enable --now meetup-api.service
+  ```
+  After a code change: rebuild the binary, then `sudo systemctl restart meetup-api`.
+- **Env** (set in the unit): `PORT=3000`,
+  `MEETUP_ORG_URL=https://www.meetup.com/astoria-tech-meetup/`,
+  `REFRESH_INTERVAL_HOURS=1`.
+- **Startup note:** `main.go` does the full initial scrape *before* it calls
+  `ListenAndServe`, so the port isn't accepting connections for ~30s after start
+  (paginates all past events). Normal — not a hang.
+- The Docker/`compose.yaml` and `k8s/` manifests below are kept for reference /
+  the moonbeam-nyc org path, but are **not** how the Pi deployment runs.
 
 ## Tech Stack
 - **Runtime**: Go 1.21
@@ -41,16 +66,42 @@ This is a lightweight Go API server that scrapes Meetup.com organization pages a
 ## Core Functionality
 
 ### Web Scraping (cmd/server/scraper.go)
-- Scrapes Meetup.com organization pages by fetching the HTML and extracting the `__NEXT_DATA__` JSON embedded in the page
-- Parses the Apollo GraphQL state from the Next.js data using goquery
-- Extracts both ACTIVE (upcoming) and PAST events
-- Parses event details: title, description, date/time, location, attendee count, event URL
-- Strips HTML from descriptions for clean text output
+- **Upcoming (ACTIVE)** events: fetch the org page HTML, extract the `__NEXT_DATA__`
+  JSON, parse the Apollo state (goquery), filter by status. Robust — no private API.
+- **Past events (full history):** POST to Meetup's `gql2` GraphQL endpoint with
+  cursor pagination (`getPastGroupEvents`).
+- Parses event details: title, description, date/time, location, attendee count,
+  event URL; strips HTML from descriptions.
+
+#### ⚠️ Past-events GraphQL uses Automatic Persisted Queries (APQ) — and the fallback
+The GraphQL call sends only the query's **sha256 hash** (`84d621…`), not the query
+text. When Meetup's edge cache doesn't have that hash registered, it returns
+**HTTP 200 with `errors: [PersistedQueryNotFound]`** and zero edges. This is
+intermittent — the hash is warm only when real browsers recently ran it. Two guards
+handle this (both added 2026-07-05, do not remove without a replacement):
+1. `fetchPastEventsGraphQL` inspects the GraphQL `errors` array and returns a real
+   error on `PersistedQueryNotFound` (previously the empty result was silently
+   cached as "no past events" — the bug that shipped 0 past events on first deploy).
+2. `fetchAllPastEvents` falls back to scraping the **`/events/?type=past` HTML
+   page** (its `__NEXT_DATA__` embeds the ~10 most recent past events, no APQ), so a
+   cold cache degrades to "recent events", never zero. Full 234-event history
+   returns once the hash is warm again.
+- A truly robust fix would implement APQ properly (resend with the full query text
+  on `PersistedQueryNotFound`), but that needs Meetup's exact query document and is
+  fragile to their changes — the fallback is the pragmatic choice.
 
 ### Caching (cmd/server/main.go)
 - Maintains in-memory cache of upcoming and past events with RWMutex for thread safety
 - Automatically refreshes based on configurable interval (default: hourly)
-- Goroutines and channels for concurrent operations
+- **Defensive `refreshCache` (never serve/keep empty):**
+  - A scrape error leaves the existing cache untouched.
+  - Empty `upcoming` never overwrites a populated cache (upcoming *can* legitimately
+    be 0, but we treat an empty scrape as a transient failure).
+  - `past` is **monotonic**: only accept a past list ≥ what's cached, so the ~10-item
+    HTML fallback can't clobber a good full history, yet still upgrades once GraphQL
+    recovers. (Past history only accumulates, so a shrink signals a degraded fetch.)
+  - **Initial load retries** (5× with backoff) instead of `log.Fatal` — a cold APQ
+    cache at startup no longer takes the server down or serves 0 past events.
 
 ### API Endpoints (cmd/server/main.go)
 - `GET /` - API documentation
@@ -240,6 +291,10 @@ The test uses `compose.yaml` which already has `MEETUP_ORG_URL` configured (defa
 1. **"MEETUP_ORG_URL environment variable is required"** - ConfigMap not set or deployment not configured
 2. **Scraping fails** - Meetup.com may have changed their page structure, check __NEXT_DATA__ format
 3. **Cache not updating** - Check cron schedule syntax and logs for errors
+4. **Only ~10 past events (not the full history)** - Meetup's persisted-query cache
+   is cold (`PersistedQueryNotFound` in logs); the HTML fallback is serving recent
+   events. Expected to self-recover on a later refresh once the hash warms. See the
+   APQ note under Web Scraping.
 
 ## Git Configuration
 - Do NOT include Claude Code footer in commit messages

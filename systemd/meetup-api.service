@@ -1,0 +1,26 @@
+[Unit]
+Description=meetup-api — Astoria Tech Meetup events API (Go, scrapes Meetup.com)
+Documentation=https://github.com/moonbeam-nyc/meetup-api
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=peter
+WorkingDirectory=/home/peter/projects/personal/meetup-api
+ExecStart=/home/peter/projects/personal/meetup-api/meetup-api
+# Public at meetup-api.astoria.app via http-routing (Caddy -> this loopback port).
+Environment=PORT=3000
+Environment=MEETUP_ORG_URL=https://www.meetup.com/astoria-tech-meetup/
+Environment=REFRESH_INTERVAL_HOURS=1
+Restart=on-failure
+RestartSec=5
+
+# Hardening — pure network service, no filesystem writes needed.
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
